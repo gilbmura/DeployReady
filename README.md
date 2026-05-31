@@ -1,27 +1,29 @@
-# DeployReady
+# Kora Analytics API — DeployReady
 
-This challenge is designed to test your understanding of core DevOps practices: containerisation, automated pipelines, and cloud deployment.
-
----
-
-## 1. Business Context
-
-**Client:** Kora Analytics
-**Industry:** SaaS — Data dashboards for logistics companies
-
-### The Problem
-
-Every time the Kora team wants to deploy a new version of their app, a developer manually SSHs into the server, pulls the code, and restarts the process by hand. There are no automated tests before a release and no way to tell if a deploy broke something until a customer complains.
-
-### Your Role
-
-You are joining as their first DevOps engineer. The application code already works — your job is to **containerise it, automate the delivery pipeline, and get it running on a cloud platform** (AWS, GCP, Azure, or any other cloud provider you are familiar with).
+A Node.js REST API containerised with Docker, deployed to AWS EC2, and delivered via an automated GitHub Actions CI/CD pipeline.
 
 ---
 
-## 2. The Application
+## Architecture Overview
 
-A simple Node.js API is provided in the [`app/`](./app/) directory. It has three endpoints:
+```
+GitHub (push to main)
+        │
+        ▼
+GitHub Actions Pipeline
+  ├── 1. Test       (npm test)
+  ├── 2. Build      (Docker image tagged with commit SHA)
+  ├── 3. Push       (GitHub Container Registry)
+  └── 4. Deploy     (SSH into EC2, pull image, restart container)
+        │
+        ▼
+AWS EC2 (t2.micro, Ubuntu 24.04)
+  └── Docker container listening on port 80
+```
+
+---
+
+## API Endpoints
 
 | Method | Route      | Description                            |
 | ------ | ---------- | -------------------------------------- |
@@ -29,113 +31,70 @@ A simple Node.js API is provided in the [`app/`](./app/) directory. It has three
 | GET    | `/metrics` | Returns uptime and memory usage        |
 | POST   | `/data`    | Accepts a JSON body and echoes it back |
 
-Run it locally:
+---
+
+## Running Locally with Docker
+
+1. Clone the repository:
+   ```bash
+   git clone <your-repo-url>
+   cd DeployReady
+   ```
+
+2. Copy the example env file:
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Start the app:
+   ```bash
+   docker compose up --build
+   ```
+
+4. Test it:
+   ```bash
+   curl http://localhost:3000/health
+   ```
+
+---
+
+## Running Tests
 
 ```bash
 cd app
 npm install
-npm start
+npm test
 ```
 
-Do not change the application logic. Your work is everything around it.
+---
+
+## CI/CD Pipeline
+
+The pipeline runs automatically on every push to `main` via `.github/workflows/deploy.yml`.
+
+**Steps:**
+1. **Test** — runs `npm test`. Pipeline stops if any test fails.
+2. **Build** — builds the Docker image tagged with the Git commit SHA.
+3. **Push** — pushes the image to GitHub Container Registry (GHCR).
+4. **Deploy** — SSHs into the EC2 server, pulls the new image, and restarts the container.
+
+**Required GitHub repository secrets:**
+
+| Secret | Description |
+|--------|-------------|
+| `SERVER_HOST` | EC2 public IP address |
+| `SERVER_USER` | SSH username (`ubuntu`) |
+| `SSH_PRIVATE_KEY` | Contents of the `.pem` key file |
+| `GHCR_USERNAME` | GitHub username |
+| `GHCR_TOKEN` | GitHub personal access token with `write:packages` scope |
 
 ---
 
-## 3. The Assignment
+## Cloud Deployment
 
-### Part 1 — Containerise the App
+Deployed on **AWS EC2 `t2.micro`** in `us-east-1`.
 
-**Deliverables:** A `Dockerfile` and a `docker-compose.yml` in the root of your repository.
+- The container runs on port 80 and is configured to restart automatically.
+- See [DEPLOYMENT.md](./DEPLOYMENT.md) for full setup details.
 
-**Dockerfile requirements:**
-
-- The app must run inside a Docker container.
-- The container must accept a `PORT` environment variable.
-- The container must **not** run as the `root` user.
-
-**Docker Compose requirements:**
-
-- Define the app as a service in `docker-compose.yml`.
-- Map port `3000` on the host to the container.
-- Pass the `PORT` variable via an `.env` file (include a `.env.example` with placeholder values).
-- Running the following must start a working API:
-  ```bash
-  docker compose up --build
-  ```
-
----
-
-### Part 2 — Automate the Pipeline
-
-**Deliverable:** A `.github/workflows/deploy.yml` GitHub Actions workflow.
-
-The pipeline must run these steps **in order** on every push to `main`:
-
-1. **Test** — Run `npm test`. If tests fail, the pipeline stops. Nothing gets deployed.
-2. **Build** — Build the Docker image and tag it with the Git commit SHA.
-3. **Push** — Push the image to a container registry (GitHub Container Registry, AWS ECR, GCR, ACR, or equivalent).
-4. **Deploy** — Pull the new image on your cloud server and restart the container.
-
-Additional requirements:
-
-- Secrets (SSH key, registry token) must be stored as **GitHub repository secrets** — never in the code.
-- Add a short comment above each step in the YAML explaining what it does.
-
----
-
-### Part 3 — Deploy to the Cloud
-
-**Deliverable:** A running service on a cloud platform and a short `DEPLOYMENT.md` explaining your setup.
-
-Use **AWS, GCP, Azure, or any other cloud provider you are familiar with**. Provision the following (via the cloud console is fine):
-
-- A **virtual machine** (e.g. AWS EC2 `t2.micro`, GCP `e2-micro`, Azure B1s) with Docker installed.
-- A **firewall / security group** that allows:
-  - HTTP on port 80 from anywhere
-  - SSH on port 22 **from your IP only** — not open to the world
-- A **service account / IAM user or role** for the pipeline with only the permissions it needs.
-
-At submission time, `GET http://<your-server-ip>/health` must return `{ "status": "ok" }`.
-
-Document in `DEPLOYMENT.md`:
-
-- Which cloud provider and service you used, and why
-- How you set up the virtual machine
-- How you installed Docker and pulled your image
-- How to check if the container is running
-- How to view the application logs
-
----
-
-## 4. Bonus (Optional)
-
-Pick **one** of the following if you want to go further:
-
-- **Use Terraform** (or your cloud's IaC tool) to provision the VM and firewall rules instead of the console.
-- **Add a cloud monitoring alarm** (e.g. AWS CloudWatch, GCP Cloud Monitoring, Azure Monitor) that triggers if `/health` stops responding.
-- **Implement a rollback step** in the pipeline that re-deploys the previous image if the health check fails after deploy.
-
-Describe what you added and why in your `DEPLOYMENT.md`.
-
----
-
-## 5. Submission Instructions
-
-1. **Fork** this repository.
-2. Complete all three parts in your fork.
-3. **Replace this README** with your own documentation (architecture overview, setup steps, decisions made).
-4. Submit your repo link via the [online form](https://forms.cloud.microsoft/e/f3FF83LVz3).
-
----
-
-## ⚠️ Pre-Submission Checklist
-
-- [ ] `docker compose up --build` starts the app locally
-- [ ] A `.env.example` file is committed (the real `.env` is not)
-- [ ] At least one successful pipeline run is visible in the GitHub Actions tab
-- [ ] `GET /health` on your cloud server's public IP returns 200
-- [ ] No secrets or `.pem` files committed to the repository
-- [ ] SSH port 22 is **not** open to the world (`0.0.0.0/0`)
-- [ ] `DEPLOYMENT.md` is present and covers the four points in Part 3
-- [ ] This README has been replaced with your own documentation
-- [ ] Commit history shows progress over time (not a single upload commit)
+**Live URL:** `http://54.236.210.238/health`
